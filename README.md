@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2023 German Aerospace Center (DLR), Forschungszentrum Jülich, Helmholtz-Zentrum Dresden-Rossendorf
+
+SPDX-License-Identifier: CC0-1.0
+-->
+
 # HERMES continuous integration templates
 
 This repository contains templates for continuous integration systems that can be used to publish software automatically.
