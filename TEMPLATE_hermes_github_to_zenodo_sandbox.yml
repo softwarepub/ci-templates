@@ -1,7 +1,7 @@
 ###############################################################################################################
 # TEMPLATE! To use this template, do the following:
 #
-# 1. Copy this file into the .github/workflows/ directory in your repository.
+# 1. Copy this file into the .github/workflows/ directory in your repository and remove the 'TEMPLATE_' prefix.
 # 2. Go through the file and carefully adapt to your needs, as marked by an '# ADAPT' comment.
 ###############################################################################################################
 
