@@ -84,7 +84,7 @@ hermes_publish_curated_metadata_and_postprocess:
   extends:
     - .hermes_job
   variables:
-    HERMES_ARCHIVE_NAME: astronaut-analysis.zip
+    HERMES_ARCHIVE_NAME: $CI_PROJECT_NAME.zip
     MR_SOURCE_BRANCH: hermes/post-$CI_COMMIT_SHORT_SHA
     MR_COMMIT_MESSAGE: "[hermes] Add post-processing results"
     MR_TITLE: Review hermes post-processing results
