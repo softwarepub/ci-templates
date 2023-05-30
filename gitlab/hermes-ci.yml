@@ -1,0 +1,170 @@
+# SPDX-FileCopyrightText: 2023 German Aerospace Center (DLR), Forschungszentrum Jülich, Helmholtz-Zentrum Dresden-Rossendorf
+#
+# SPDX-License-Identifier: MIT
+
+# This template provides a set of template workflows that can be used to easily integrate
+# the hermes workflow into your GitLab CI.
+#
+# The following templates are available:
+#
+# - ˋ.hermes_curateˋ: Prepare metadata for curation in a merge request.
+# - ˋ.hermes_depositˋ: Deposit the curated metadata and run post-processing.
+# - ˋ.hermes_cleanupˋ: Remove transient branches created by the workflow.
+#
+# The following variables can be used to tune the workflows:
+#
+# - ˋMR_BASE_REFˋ: The git reference to start hermes workflow from.
+# - ˋMR_POST_BRANCHˋ: The branch to merge post-processing results into.
+#   This defaults to $CI_COMMIT_BRANCH if set, else $CI_DEFAULT_BRANCH.
+#   Needs to be defined for ˋ.hermes_curateˋ.
+# - ˋMR_TITLEˋ: Title for the merge request.
+# - ˋMR_DESCRIPTIONˋ: Description for the merge request.
+# - ˋMR_COMMIT_MESSAGEˋ: Commit message for the autoated commit (if any).
+
+# "Call-back" to create archive
+# ADAPT with commands that create a file to upload. The filename is provided as $HERMES_ARCHIVE_NAME.
+.hermes_create_deposition: &hermes_create_deposition
+  - git fetch origin "$MR_TARGET_BRANCH"
+  - git archive --format zip "origin/$MR_TARGET_BRANCH" > $HERMES_ARCHIVE
+
+
+# Basic building blocks of hermes jobs
+# - Set up git with a valid author and configure URL to allow pushes.
+.hermes_prepare_git: &hermes_prepare_git
+  - git config user.name "$GITLAB_USER_NAME"
+  - git config user.email "$GITLAB_USER_EMAIL"
+  - git remote set-url origin "${CI_SERVER_PROTOCOL}://__token__:${HERMES_PUSH_TOKEN}@${CI_SERVER_HOST}:${CI_SERVER_PORT}/${CI_PROJECT_PATH}.git"
+
+# - Switch to new MR_SOURCE_BRANCH.
+.hermes_switch_branch: &hermes_switch_branch
+  - git branch "$MR_SOURCE_BRANCH" "origin/$MR_TARGET_BRANCH"
+  - git switch "$MR_SOURCE_BRANCH"
+
+# - Commit changes and create a matching merge request.
+.hermes_create_merge_request: &hermes_create_merge_request
+  - git commit -m "$MR_COMMIT_MESSAGE"
+  - >-
+    git push origin "$MR_SOURCE_BRANCH"
+    -o merge_request.create
+    -o merge_request.target="$MR_TARGET_BRANCH"
+    -o merge_request.title="$MR_TITLE"
+    -o merge_request.description="$MR_DESCRIPTION"
+    -o merge_request.remove_source_branch
+
+# - Delete all branches created by hermes for curation.
+.hermes_cleanup_branches: &hermes_cleanup_branches
+  - |
+    for BRANCH in $(git ls-remote origin 'refs/heads/hermes/curate-*' | cut -f2 | cut -d'/' -f'3-'); do
+      git push origin --delete "$BRANCH"
+    done
+
+# Base job template for hermes
+.hermes_job:
+  stage: deploy
+  image: python:3.10
+  cache:
+    key: hermes
+    paths:
+      - .hermes-env
+  before_script:
+    - *hermes_prepare_git
+    - |
+      if test ! -d .hermes-env
+      then
+        python -m venv .hermes-env
+      fi
+    - . .hermes-env/bin/activate
+    - pip install git+https://github.com/hermes-hmc/workflow.git
+  tags:
+    - docker
+  artifacts:
+    paths: [".hermes/"]
+
+# hermes metadata preparation - this job creates a MR that will trigger deposition when merged.
+.hermes_curate:
+  extends:
+    - .hermes_job
+  variables:
+    MR_BASE_REF: "origin/$CI_COMMIT_BRANCH"
+    MR_SOURCE_BRANCH: hermes/curate-result-$CI_COMMIT_SHORT_SHA
+    MR_TARGET_BRANCH: hermes/curate-$CI_COMMIT_SHORT_SHA
+    MR_COMMIT_MESSAGE: "[hermes] Add metadata for curation"
+    MR_TITLE: Metadata Curation for Commit $CI_COMMIT_SHORT_SHA
+    MR_DESCRIPTION: >-
+      Please carefully review the attached metadata.
+      If you are satisfied with the result, you may merge this MR, which will trigger publication.
+      (Any temporary branches will be cleaned up.)
+  rules:
+    - exists:
+      - .hermes/curate/target_branch
+      when: never
+    - if: $CI_COMMIT_TITLE =~ /^Merge branch 'hermes\/post-[0-9a-f]{8}' into/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    # Run hermes pipeline
+    - hermes harvest
+    - hermes process
+    - hermes curate
+
+    # Store BASE ref for post-processing
+    - |
+      if [ -z "$MR_POST_BRANCH" ]
+      then
+        if [ ! -z "$CI_COMMIT_BRANCH" ]
+        then
+          MR_POST_BRANCH=$CI_COMMIT_BRANCH
+        else
+          MR_POST_BRANCH=$CI_DEFAULT_BRANCH
+        fi
+      fi
+      echo $MR_POST_BRANCH > .hermes/curate/target_branch
+    
+    # Create target branch for curation merge
+    - git branch "$MR_TARGET_BRANCH" "$MR_BASE_REF"
+    - git push origin "$MR_TARGET_BRANCH"
+
+    # Create curation branch and merge request
+    - *hermes_switch_branch
+    - git add -f .hermes/curate
+    - *hermes_create_merge_request
+
+# hermes deposition and post-processing - this job creates a MR to re-integrate the results of post-processing.
+.hermes_deposit:
+  stage: deploy
+  extends:
+    - .hermes_job
+  variables:
+    HERMES_ARCHIVE: $CI_PROJECT_NAME.zip
+    MR_SOURCE_BRANCH: hermes/post-$CI_COMMIT_SHORT_SHA
+    MR_COMMIT_MESSAGE: "[hermes] Add post-processing results"
+    MR_TITLE: Review hermes post-processing results
+    MR_DESCRIPTION: >-
+      This is an automated pull request created by HERMES post-processing. 
+      Please carefully review the changes and finally merge them into your
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "push" || $CI_COMMIT_BRANCH !~ /^hermes\/curate-[0-9a-f]{8}/
+      when: never
+    - exists:
+      - .hermes/curate/target_branch
+  script:
+    # Restore target branch
+    - MR_TARGET_BRANCH="$(cat .hermes/curate/target_branch)"
+    
+    # Invoke callback to create $HERMES_ARCHIVE_NAME and publish
+    - *hermes_create_deposition
+    - hermes deposit --initial --auth-token $ZENODO_TOKEN --file $HERMES_ARCHIVE --file README.md
+
+    # Prepare clean branch for post-processing and run it
+    - *hermes_switch_branch
+    - hermes postprocess
+
+    # Put all changes into a merge request
+    - git add .
+    - *hermes_create_merge_request
+  after_script:
+    - *hermes_cleanup_branches
+
+.hermes_cleanup:
+  script:
+    - *hermes_cleanup_branches
