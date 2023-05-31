@@ -15,5 +15,5 @@ hermes_curate:
     - .hermes_curate
 
 hermes_deposit:
-  - extends:
-    . hermes_deposit
+  extends:
+    - .hermes_deposit
