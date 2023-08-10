@@ -15,4 +15,3 @@ This repository contains templates for continuous integration systems that can b
 Please see the [LICENSES/](LICENSES/) directory and the headers in files for details.
 
 Copyright (c) 2023 German Aerospace Center (DLR), Forschungszentrum Jülich, Helmholtz-Zentrum Dresden-Rossendorf
-
