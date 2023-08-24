@@ -119,7 +119,7 @@
         fi
       fi
       echo $MR_POST_BRANCH > .hermes/curate/target_branch
-    
+
     # Create target branch for curation merge
     - git branch "$MR_TARGET_BRANCH" "$MR_BASE_REF"
     - git push origin "$MR_TARGET_BRANCH"
@@ -140,7 +140,7 @@
     MR_COMMIT_MESSAGE: "[hermes] Add post-processing results"
     MR_TITLE: Review hermes post-processing results
     MR_DESCRIPTION: >-
-      This is an automated pull request created by HERMES post-processing. 
+      This is an automated pull request created by HERMES post-processing.
       Please carefully review the changes and finally merge them into your
   rules:
     - if: $CI_PIPELINE_SOURCE != "push" || $CI_COMMIT_BRANCH !~ /^hermes\/curate-[0-9a-f]{8}/
@@ -150,7 +150,7 @@
   script:
     # Restore target branch
     - MR_TARGET_BRANCH="$(cat .hermes/curate/target_branch)"
-    
+
     # Invoke callback to create $HERMES_ARCHIVE_NAME and publish
     - *hermes_create_deposition
     - hermes deposit --initial --auth-token $ZENODO_TOKEN --file $HERMES_ARCHIVE --file README.md
