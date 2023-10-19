@@ -159,8 +159,9 @@
     - *hermes_switch_branch
     - hermes postprocess
 
-    # Put all changes into a merge request
+    # Put all changes into a merge request (all but .hermes-env)
     - git add .
+    - git reset .hermes-env
     - *hermes_create_merge_request
   after_script:
     - *hermes_cleanup_branches
