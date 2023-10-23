@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2023 German Aerospace Center (DLR), Forschungszentrum Jülich, Helmholtz-Zentrum Dresden-Rossendorf
 #
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: CC0-1.0
 
 # This template provides a set of template workflows that can be used to easily integrate
 # the hermes workflow into your GitLab CI.
@@ -159,8 +159,9 @@
     - *hermes_switch_branch
     - hermes postprocess
 
-    # Put all changes into a merge request
+    # Put all changes into a merge request (all but .hermes-env)
     - git add .
+    - git reset .hermes-env
     - *hermes_create_merge_request
   after_script:
     - *hermes_cleanup_branches
