@@ -74,7 +74,7 @@
         python -m venv .hermes-env
       fi
     - . .hermes-env/bin/activate
-    - pip install git+https://github.com/hermes-hmc/workflow.git
+    - pip install hermes
   tags:
     - docker
   artifacts:
@@ -153,7 +153,7 @@
 
     # Invoke callback to create $HERMES_ARCHIVE_NAME and publish
     - *hermes_create_deposition
-    - hermes deposit --initial --auth-token $ZENODO_TOKEN --file $HERMES_ARCHIVE --file README.md
+    - hermes deposit --initial -O invenio_rdm.auth_token "$ZENODO_TOKEN" --file "$HERMES_ARCHIVE" --file README.md
 
     # Prepare clean branch for post-processing and run it
     - *hermes_switch_branch
