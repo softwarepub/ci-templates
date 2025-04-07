@@ -74,7 +74,8 @@
         python -m venv .hermes-env
       fi
     - . .hermes-env/bin/activate
-    - pip install git+https://github.com/softwarepub/hermes.git@feature/init-command
+    - pip install hermes
+{%pip_install_plugins_gitlab%}
   tags:
     - docker
   artifacts:
