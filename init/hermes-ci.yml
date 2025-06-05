@@ -154,7 +154,7 @@
 
     # Invoke callback to create $HERMES_ARCHIVE_NAME and publish
     - *hermes_create_deposition
-    - hermes deposit {%deposit_initial%} -O invenio_rdm.auth_token "$ZENODO_TOKEN" --file "$HERMES_ARCHIVE" {%deposit_extra_files%}
+    - hermes deposit {%deposit_initial%} {%deposit_parameter_token%} "${%deposit_token_name%}" --file "$HERMES_ARCHIVE" {%deposit_extra_files%}
 
     # Prepare clean branch for post-processing and run it
     - *hermes_switch_branch

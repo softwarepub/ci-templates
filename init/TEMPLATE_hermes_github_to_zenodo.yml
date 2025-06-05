@@ -108,7 +108,7 @@ jobs:
       # 2. Adapt the files you want to deposit. In the example, showcase.zip and README.md are deposited alongside the metadata.
       # 3. Check if you want to run with '--initial', as this may potentially create a completely new record (collection),
       #    rather than a new version of the same collection!
-      - run: hermes deposit {%deposit_initial%} -O invenio_rdm.auth_token ${{ secrets.ZENODO_SANDBOX }} --file {%deposit_zip_name%} {%deposit_extra_files%}
+      - run: hermes deposit {%deposit_initial%} {%deposit_parameter_token%} ${{ secrets.{%deposit_token_name%} }} --file {%deposit_zip_name%} {%deposit_extra_files%}
 
       # ADAPT
       # Remove this command if you don't want to do any postprocessing
