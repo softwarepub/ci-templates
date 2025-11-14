@@ -25,7 +25,7 @@
 # ADAPT with commands that create a file to upload. The filename is provided as $HERMES_ARCHIVE_NAME.
 .hermes_create_deposition: &hermes_create_deposition
   - git fetch origin "$MR_TARGET_BRANCH"
-  - git archive --format zip "origin/$MR_TARGET_BRANCH" > $HERMES_ARCHIVE
+  - git archive --format zip "origin/$MR_TARGET_BRANCH" {%deposit_zip_files%} > $HERMES_ARCHIVE
 
 
 # Basic building blocks of hermes jobs
@@ -74,12 +74,12 @@
         python -m venv .hermes-env
       fi
     - . .hermes-env/bin/activate
-    - pip install git+https://github.com/softwarepub/hermes.git@feature/init-command
+    - pip install hermes
+{%pip_install_plugins_gitlab%}
   tags:
     - docker
   artifacts:
-    paths: [".hermes/", "hermes.log"]
-    when: always
+    paths: [".hermes/"]
 
 # hermes metadata preparation - this job creates a MR that will trigger deposition when merged.
 .hermes_curate:
@@ -136,7 +136,7 @@
   extends:
     - .hermes_job
   variables:
-    HERMES_ARCHIVE: $CI_PROJECT_NAME.zip
+    HERMES_ARCHIVE: {%deposit_zip_name%}
     MR_SOURCE_BRANCH: hermes/post-$CI_COMMIT_SHORT_SHA
     MR_COMMIT_MESSAGE: "[hermes] Add post-processing results"
     MR_TITLE: Review hermes post-processing results
@@ -154,7 +154,7 @@
 
     # Invoke callback to create $HERMES_ARCHIVE_NAME and publish
     - *hermes_create_deposition
-    - hermes deposit --initial -O invenio_rdm.auth_token "$ZENODO_TOKEN" --file "$HERMES_ARCHIVE" --file README.md
+    - hermes deposit {%deposit_initial%} -O invenio_rdm.auth_token "$ZENODO_TOKEN" --file "$HERMES_ARCHIVE" {%deposit_extra_files%}
 
     # Prepare clean branch for post-processing and run it
     - *hermes_switch_branch
