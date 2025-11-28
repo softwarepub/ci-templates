@@ -101,7 +101,7 @@
       when: never
     - if: $CI_COMMIT_TITLE =~ /^Merge branch 'hermes\/post-[0-9a-f]{8}' into/
       when: never
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "push" && {%gl_push_condition%}
   script:
     # Run hermes pipeline
     - hermes harvest
