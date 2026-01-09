@@ -78,7 +78,8 @@
   tags:
     - docker
   artifacts:
-    paths: [".hermes/"]
+    paths: [".hermes/", "hermes.log"]
+    when: always
 
 # hermes metadata preparation - this job creates a MR that will trigger deposition when merged.
 .hermes_curate:
