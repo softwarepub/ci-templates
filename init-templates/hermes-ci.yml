@@ -2,31 +2,10 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-# This template provides a set of template workflows that can be used to easily integrate
-# the hermes workflow into your GitLab CI.
-#
-# The following templates are available:
-#
-# - ˋ.hermes_curateˋ: Prepare metadata for curation in a merge request.
-# - ˋ.hermes_depositˋ: Deposit the curated metadata and run post-processing.
-# - ˋ.hermes_cleanupˋ: Remove transient branches created by the workflow.
-#
-# The following variables can be used to tune the workflows:
-#
-# - ˋMR_BASE_REFˋ: The git reference to start hermes workflow from.
-# - ˋMR_POST_BRANCHˋ: The branch to merge post-processing results into.
-#   This defaults to $CI_COMMIT_BRANCH if set, else $CI_DEFAULT_BRANCH.
-#   Needs to be defined for ˋ.hermes_curateˋ.
-# - ˋMR_TITLEˋ: Title for the merge request.
-# - ˋMR_DESCRIPTIONˋ: Description for the merge request.
-# - ˋMR_COMMIT_MESSAGEˋ: Commit message for the autoated commit (if any).
-
 # "Call-back" to create archive
-# ADAPT with commands that create a file to upload. The filename is provided as $HERMES_ARCHIVE_NAME.
 .hermes_create_deposition: &hermes_create_deposition
   - git fetch origin "$MR_TARGET_BRANCH"
   - git archive --format zip "origin/$MR_TARGET_BRANCH" {%deposit_zip_files%} > $HERMES_ARCHIVE
-
 
 # Basic building blocks of hermes jobs
 # - Set up git with a valid author and configure URL to allow pushes.
@@ -74,7 +53,7 @@
         python -m venv .hermes-env
       fi
     - . .hermes-env/bin/activate
-    - pip install hermes
+    - {%pip_install_hermes%}
 {%pip_install_plugins_gitlab%}
   tags:
     - docker
@@ -101,7 +80,7 @@
       when: never
     - if: $CI_COMMIT_TITLE =~ /^Merge branch 'hermes\/post-[0-9a-f]{8}' into/
       when: never
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "push" && {%gl_push_condition%}
   script:
     # Run hermes pipeline
     - hermes harvest
@@ -154,7 +133,7 @@
 
     # Invoke callback to create $HERMES_ARCHIVE_NAME and publish
     - *hermes_create_deposition
-    - hermes deposit {%deposit_initial%} -O invenio_rdm.auth_token "$ZENODO_TOKEN" --file "$HERMES_ARCHIVE" {%deposit_extra_files%}
+    - hermes deposit {%deposit_initial%} {%deposit_parameter_token%} "${%deposit_token_name%}" --file "$HERMES_ARCHIVE" {%deposit_extra_files%}
 
     # Prepare clean branch for post-processing and run it
     - *hermes_switch_branch
