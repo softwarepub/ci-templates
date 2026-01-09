@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2023 German Aerospace Center (DLR), Forschungszentrum Jülich, Helmholtz-Zentrum Dresden-Rossendorf
+#
+# SPDX-License-Identifier: CC0-1.0
+
+include: gitlab/hermes-ci.yml
+
+# "Call-back" to create archive
+# ADAPT with commands that create a file to upload. The filename is provided as $HERMES_ARCHIVE_NAME.
+.hermes_create_deposition: &hermes_create_deposition
+  - git fetch origin "$MR_TARGET_BRANCH"
+  - git archive --format zip "origin/$MR_TARGET_BRANCH" > $HERMES_ARCHIVE_NAME
+
+hermes_curate:
+  extends:
+    - .hermes_curate
+
+hermes_deposit:
+  extends:
+    - .hermes_deposit
