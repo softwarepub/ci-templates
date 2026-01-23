@@ -51,7 +51,7 @@ jobs:
           echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
 
           # Create a curation branch
-          git branch -c "hermes/curate-$SHORT_SHA"
+          {%git_create_curate_branch|default('git branch -c "hermes/curate-$SHORT_SHA"', true)%}
           git push origin "hermes/curate-$SHORT_SHA"
 
           # Explicitly add to-be-curated metadata (which is ignored via .gitignore!)
@@ -96,6 +96,7 @@ jobs:
       # Create pull request to include the post-processing results
       - run: echo "TARGET_BRANCH=$(cat .hermes/curate/target_branch)" >> "$GITHUB_ENV"
       - uses: peter-evans/create-pull-request@v5
+        if: ${{ env.TARGET_BRANCH != '' }}
         with:
           branch: hermes/post-${{ github.run_id }}
           base: ${{ env.TARGET_BRANCH }}
