@@ -84,12 +84,11 @@ jobs:
           python-version: '3.10'
       - run: {%pip_install_hermes%}
 {%pip_install_plugins_github%}
-
       {%% if deposit_parameter_zip_file %%}
       # Archive the artifacts that will be published
       - run: git archive --format zip HEAD {%deposit_zip_files%} > {%deposit_zip_name%}
-      {%% endif %%}
 
+      {%% endif %%}
       # Run the HERMES deposition step
       - run: hermes deposit {%deposit_initial%} {%deposit_parameter_token%} ${{ secrets.{%deposit_token_name%} }} {%deposit_parameter_zip_file%} {%deposit_extra_files%}
 
@@ -101,20 +100,38 @@ jobs:
 
       # Take target_branch from tag ref if empty
       - run: |
+            # Test if empty
             if [ "$TARGET_BRANCH" == "" ]; then
+
+                # Take tag ref from .hermes/curate/github_ref
                 if [ -s .hermes/curate/github_ref ]; then
                     REF="$(tr -d '\r\n' < .hermes/curate/github_ref)"
                     if [ "${REF#refs/tags/}" != "$REF" ]; then
                         TAG="${REF#refs/tags/}"
+
+                        # Get commit
                         if git fetch --force --tags origin; then
                             if TAG_COMMIT="$(git rev-parse "${TAG}^{commit}" 2>/dev/null)"; then
-                                BRANCH_REF="$(git ls-remote --heads origin | awk -v sha="$TAG_COMMIT" '$1==sha {print $2; exit}')"
-                                if [ -n "$BRANCH_REF" ]; then
-                                    BRANCH="${BRANCH_REF#refs/heads/}"
-                                    echo "TARGET_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+
+                                # Test if default branch has tag as HEAD
+                                DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+                                DEFAULT_SHA="$(git ls-remote --heads origin "refs/heads/$DEFAULT_BRANCH" | awk 'NR==1{print $1}')"
+
+                                if [ -n "$DEFAULT_SHA" ] && [ "$DEFAULT_SHA" = "$TAG_COMMIT" ]; then
+                                    echo "TARGET_BRANCH=$DEFAULT_BRANCH" >> "$GITHUB_ENV"
+
+                                # See which other branch has the tag as HEAD
+                                else
+                                    BRANCH_REF="$(git ls-remote --heads origin | awk -v sha="$TAG_COMMIT" '$1==sha && $2 !~ /^refs\/heads\/hermes\// {print $2; exit}')"
+                                    if [ -n "$BRANCH_REF" ]; then
+                                        BRANCH="${BRANCH_REF#refs/heads/}"
+                                        echo "TARGET_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+                                    fi
                                 fi
+
                             fi
                         fi
+
                     fi
                 fi
             fi
