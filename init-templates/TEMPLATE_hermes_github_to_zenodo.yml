@@ -45,6 +45,7 @@ jobs:
       - run: |
           # Cache current branch for PR close job
           git branch --show-current > .hermes/curate/target_branch
+          echo "${{ github.ref }}" > .hermes/curate/github_ref
 
           # Shorten the SHA for the PR title
           SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c -8)
@@ -84,17 +85,41 @@ jobs:
       - run: {%pip_install_hermes%}
 {%pip_install_plugins_github%}
 
+      {%% if deposit_parameter_zip_file %%}
       # Archive the artifacts that will be published
       - run: git archive --format zip HEAD {%deposit_zip_files%} > {%deposit_zip_name%}
+      {%% endif %%}
 
       # Run the HERMES deposition step
-      - run: hermes deposit {%deposit_initial%} {%deposit_parameter_token%} ${{ secrets.{%deposit_token_name%} }} --file {%deposit_zip_name%} {%deposit_extra_files%}
+      - run: hermes deposit {%deposit_initial%} {%deposit_parameter_token%} ${{ secrets.{%deposit_token_name%} }} {%deposit_parameter_zip_file%} {%deposit_extra_files%}
 
       # Run the HERMES postprocess step
       - run: hermes postprocess
 
-      # Create pull request to include the post-processing results
+      # Prepare pull request to include the post-processing results
       - run: echo "TARGET_BRANCH=$(cat .hermes/curate/target_branch)" >> "$GITHUB_ENV"
+
+      # Take target_branch from tag ref if empty
+      - run: |
+            if [ "$TARGET_BRANCH" == "" ]; then
+                if [ -s .hermes/curate/github_ref ]; then
+                    REF="$(tr -d '\r\n' < .hermes/curate/github_ref)"
+                    if [ "${REF#refs/tags/}" != "$REF" ]; then
+                        TAG="${REF#refs/tags/}"
+                        if git fetch --force --tags origin; then
+                            if TAG_COMMIT="$(git rev-parse "${TAG}^{commit}" 2>/dev/null)"; then
+                                BRANCH_REF="$(git ls-remote --heads origin | awk -v sha="$TAG_COMMIT" '$1==sha {print $2; exit}')"
+                                if [ -n "$BRANCH_REF" ]; then
+                                    BRANCH="${BRANCH_REF#refs/heads/}"
+                                    echo "TARGET_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+                                fi
+                            fi
+                        fi
+                    fi
+                fi
+            fi
+
+      # Create the pull request
       - uses: peter-evans/create-pull-request@v5
         if: ${{ env.TARGET_BRANCH != '' }}
         with:
