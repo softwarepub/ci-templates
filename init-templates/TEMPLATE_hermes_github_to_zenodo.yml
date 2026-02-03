@@ -45,14 +45,14 @@ jobs:
       - run: |
           # Cache current branch for PR close job
           git branch --show-current > .hermes/curate/target_branch
-          echo "${{ github.ref }}" > .hermes/curate/github_ref
+          echo "${{ github.ref }}" > .hermes/curate/commit_ref
 
           # Shorten the SHA for the PR title
           SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c -8)
           echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
 
           # Create a curation branch
-          {%git_create_curate_branch|default('git branch -c "hermes/curate-$SHORT_SHA"', true)%}
+          {%gh_create_curate_branch|default('git branch -c "hermes/curate-$SHORT_SHA"', true)%}
           git push origin "hermes/curate-$SHORT_SHA"
 
           # Explicitly add to-be-curated metadata (which is ignored via .gitignore!)
@@ -103,9 +103,9 @@ jobs:
             # Test if empty
             if [ "$TARGET_BRANCH" == "" ]; then
 
-                # Take tag ref from .hermes/curate/github_ref
-                if [ -s .hermes/curate/github_ref ]; then
-                    REF="$(tr -d '\r\n' < .hermes/curate/github_ref)"
+                # Take tag ref from .hermes/curate/commit_ref
+                if [ -s .hermes/curate/commit_ref ]; then
+                    REF="$(tr -d '\r\n' < .hermes/curate/commit_ref)"
                     if [ "${REF#refs/tags/}" != "$REF" ]; then
                         TAG="${REF#refs/tags/}"
 

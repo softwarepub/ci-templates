@@ -88,7 +88,7 @@
     - hermes process
     - hermes curate
 
-    # Store BASE ref for post-processing
+    # Store branch & commit ref for post-processing
     - |
       if [ -z "$MR_POST_BRANCH" ]
       then
@@ -96,13 +96,14 @@
         then
           MR_POST_BRANCH=$CI_COMMIT_BRANCH
         else
-          MR_POST_BRANCH=$CI_DEFAULT_BRANCH
+          MR_POST_BRANCH=""
         fi
       fi
       echo $MR_POST_BRANCH > .hermes/curate/target_branch
+      echo $CI_COMMIT_REF_NAME > .hermes/curate/commit_ref
 
     # Create target branch for curation merge
-    - git branch "$MR_TARGET_BRANCH" "$MR_BASE_REF"
+    - {%gl_create_curate_branch|default('git branch "$MR_TARGET_BRANCH" "$MR_BASE_REF"', true)%}
     - git push origin "$MR_TARGET_BRANCH"
 
     # Create curation branch and merge request
@@ -132,9 +133,49 @@
     # Restore target branch
     - MR_TARGET_BRANCH="$(cat .hermes/curate/target_branch)"
 
-    # Invoke callback to create $HERMES_ARCHIVE_NAME and publish
+    # Get target branch from tag ref if empty
+    - |
+        # Test if empty
+        if [ "MR_TARGET_BRANCH" == "" ]; then
+
+            # Take tag ref from .hermes/curate/commit_ref
+            if [ -s .hermes/curate/commit_ref ]; then
+                REF="$(tr -d '\r\n' < .hermes/curate/commit_ref)"
+                if [ "${REF#refs/tags/}" != "$REF" ]; then
+                    TAG="${REF#refs/tags/}"
+
+                    # Get commit
+                    if git fetch --force --tags origin; then
+                        if TAG_COMMIT="$(git rev-parse "${TAG}^{commit}" 2>/dev/null)"; then
+
+                            # Test if default branch has tag as HEAD
+                            DEFAULT_SHA="$(git ls-remote --heads origin "refs/heads/$CI_DEFAULT_BRANCH" | awk 'NR==1{print $1}')"
+
+                            if [ -n "$DEFAULT_SHA" ] && [ "$DEFAULT_SHA" = "$TAG_COMMIT" ]; then
+                                MR_TARGET_BRANCH=$CI_DEFAULT_BRANCH
+
+                            # See which other branch has the tag as HEAD
+                            else
+                                BRANCH_REF="$(git ls-remote --heads origin | awk -v sha="$TAG_COMMIT" '$1==sha && $2 !~ /^refs\/heads\/hermes\// {print $2; exit}')"
+                                if [ -n "$BRANCH_REF" ]; then
+                                    BRANCH="${BRANCH_REF#refs/heads/}"
+                                    MR_TARGET_BRANCH=$BRANCH
+                                fi
+                            fi
+
+                        fi
+                    fi
+
+                fi
+            fi
+        fi
+
+    {%% if deposit_parameter_zip_file %%}
+    # Invoke callback to create {%deposit_zip_name%} and publish
     - *hermes_create_deposition
-    - hermes deposit {%deposit_initial%} {%deposit_parameter_token%} "${%deposit_token_name%}" --file "$HERMES_ARCHIVE" {%deposit_extra_files%}
+    {%% endif %%}
+    # Call deposit to publish
+    - hermes deposit {%deposit_initial%} {%deposit_parameter_token%} "${%deposit_token_name%}" {%deposit_parameter_zip_file%} {%deposit_extra_files%}
 
     # Prepare clean branch for post-processing and run it
     - *hermes_switch_branch
