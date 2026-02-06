@@ -107,8 +107,6 @@ jobs:
       # 3. Check if you want to run with '--initial', as this may potentially create a completely new record (collection),
       #    rather than a new version of the same collection!
       - run: hermes deposit --initial -O invenio_rdm.auth_token ${{ secrets.ZENODO_SANDBOX }} --file artifact.zip --file README.md
-      - if: ${{ env.ZENODO_TOKEN_REFRESH != '' }}
-        run: hermes init --only-set-refresh-token --github-token ${{ secrets.GITHUB_TOKEN }}
 
       # ADAPT
       # Remove this command if you don't want to do any postprocessing
