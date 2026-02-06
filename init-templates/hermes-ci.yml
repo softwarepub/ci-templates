@@ -82,6 +82,7 @@
     - if: $CI_COMMIT_TITLE =~ /^Merge branch 'hermes\/post-[0-9a-f]{8}' into/
       when: never
     - if: $CI_PIPELINE_SOURCE == "push" && {%gl_push_condition%}
+    - when: never
   script:
     # Run hermes pipeline
     - hermes harvest
@@ -135,37 +136,30 @@
 
     # Get target branch from tag ref if empty
     - |
-        # Test if empty
-        if [ "MR_TARGET_BRANCH" == "" ]; then
+        # Test if empty and .hermes/curate/commit_ref exists
+        if [ -z "$MR_TARGET_BRANCH" ] && [ -s .hermes/curate/commit_ref ]; then
+            # Get default branch
+            DEFAULT_BRANCH = $CI_DEFAULT_BRANCH
 
             # Take tag ref from .hermes/curate/commit_ref
-            if [ -s .hermes/curate/commit_ref ]; then
-                REF="$(tr -d '\r\n' < .hermes/curate/commit_ref)"
-                if [ "${REF#refs/tags/}" != "$REF" ]; then
-                    TAG="${REF#refs/tags/}"
+            REF="$(tr -d '\r\n' < .hermes/curate/commit_ref)"
+            TAG="${REF#refs/tags/}"
 
-                    # Get commit
-                    if git fetch --force --tags origin; then
-                        if TAG_COMMIT="$(git rev-parse "${TAG}^{commit}" 2>/dev/null)"; then
+            # Get commit
+            git fetch --force --tags origin '+refs/heads/*:refs/remotes/origin/*' >/dev/null 2>&1 || true
+            TAG_COMMIT="$(git rev-parse "${TAG}^{commit}" 2>/dev/null)" || exit 0
 
-                            # Test if default branch has tag as HEAD
-                            DEFAULT_SHA="$(git ls-remote --heads origin "refs/heads/$CI_DEFAULT_BRANCH" | awk 'NR==1{print $1}')"
-
-                            if [ -n "$DEFAULT_SHA" ] && [ "$DEFAULT_SHA" = "$TAG_COMMIT" ]; then
-                                MR_TARGET_BRANCH=$CI_DEFAULT_BRANCH
-
-                            # See which other branch has the tag as HEAD
-                            else
-                                BRANCH_REF="$(git ls-remote --heads origin | awk -v sha="$TAG_COMMIT" '$1==sha && $2 !~ /^refs\/heads\/hermes\// {print $2; exit}')"
-                                if [ -n "$BRANCH_REF" ]; then
-                                    BRANCH="${BRANCH_REF#refs/heads/}"
-                                    MR_TARGET_BRANCH=$BRANCH
-                                fi
-                            fi
-
-                        fi
-                    fi
-
+            # Check if the default or another branch contains the tag commit
+            if git merge-base --is-ancestor "$TAG_COMMIT" "origin/$DEFAULT_BRANCH"; then
+                MR_TARGET_BRANCH="$DEFAULT_BRANCH"
+            else
+                BRANCH_REF="$(
+                    git for-each-ref --contains "$TAG_COMMIT" --format='%(refname:short)' refs/remotes/origin \
+                    | grep -vE '^origin/(hermes/|HEAD$)' \
+                    | head -n1
+                )"
+                if [ -n "$BRANCH_REF" ]; then
+                    MR_TARGET_BRANCH="${BRANCH_REF#refs/heads/}"
                 fi
             fi
         fi
@@ -176,6 +170,13 @@
     {%% endif %%}
     # Call deposit to publish
     - hermes deposit {%deposit_initial%} {%deposit_parameter_token%} "${%deposit_token_name%}" {%deposit_parameter_zip_file%} {%deposit_extra_files%}
+
+    # Skip on missing target branch
+    - |
+        if [ -z "$MR_TARGET_BRANCH" ]; then
+            echo "MR_TARGET_BRANCH is empty. Skipping postprocess."
+            exit 0
+        fi
 
     # Prepare clean branch for post-processing and run it
     - *hermes_switch_branch
