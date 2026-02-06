@@ -21,14 +21,18 @@
 
 # - Commit changes and create a matching merge request.
 .hermes_create_merge_request: &hermes_create_merge_request
-  - git commit -m "$MR_COMMIT_MESSAGE"
-  - >-
-    git push origin "$MR_SOURCE_BRANCH"
-    -o merge_request.create
-    -o merge_request.target="$MR_TARGET_BRANCH"
-    -o merge_request.title="$MR_TITLE"
-    -o merge_request.description="$MR_DESCRIPTION"
-    -o merge_request.remove_source_branch
+  - |
+    if git diff --cached --quiet; then
+        echo "No staged changes. Skipping MR creation."
+    else
+        git commit -m "$MR_COMMIT_MESSAGE"
+        git push origin "$MR_SOURCE_BRANCH" \
+          -o merge_request.create \
+          -o merge_request.target="$MR_TARGET_BRANCH" \
+          -o merge_request.title="$MR_TITLE" \
+          -o merge_request.description="$MR_DESCRIPTION" \
+          -o merge_request.remove_source_branch
+    fi
 
 # - Delete all branches created by hermes for curation.
 .hermes_cleanup_branches: &hermes_cleanup_branches
