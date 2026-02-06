@@ -139,7 +139,7 @@
         # Test if empty and .hermes/curate/commit_ref exists
         if [ -z "$MR_TARGET_BRANCH" ] && [ -s .hermes/curate/commit_ref ]; then
             # Get default branch
-            DEFAULT_BRANCH = $CI_DEFAULT_BRANCH
+            DEFAULT_BRANCH="$CI_DEFAULT_BRANCH"
 
             # Take tag ref from .hermes/curate/commit_ref
             REF="$(tr -d '\r\n' < .hermes/curate/commit_ref)"
