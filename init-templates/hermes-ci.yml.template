@@ -2,31 +2,10 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-# This template provides a set of template workflows that can be used to easily integrate
-# the hermes workflow into your GitLab CI.
-#
-# The following templates are available:
-#
-# - ˋ.hermes_curateˋ: Prepare metadata for curation in a merge request.
-# - ˋ.hermes_depositˋ: Deposit the curated metadata and run post-processing.
-# - ˋ.hermes_cleanupˋ: Remove transient branches created by the workflow.
-#
-# The following variables can be used to tune the workflows:
-#
-# - ˋMR_BASE_REFˋ: The git reference to start hermes workflow from.
-# - ˋMR_POST_BRANCHˋ: The branch to merge post-processing results into.
-#   This defaults to $CI_COMMIT_BRANCH if set, else $CI_DEFAULT_BRANCH.
-#   Needs to be defined for ˋ.hermes_curateˋ.
-# - ˋMR_TITLEˋ: Title for the merge request.
-# - ˋMR_DESCRIPTIONˋ: Description for the merge request.
-# - ˋMR_COMMIT_MESSAGEˋ: Commit message for the autoated commit (if any).
-
 # "Call-back" to create archive
-# ADAPT with commands that create a file to upload. The filename is provided as $HERMES_ARCHIVE_NAME.
 .hermes_create_deposition: &hermes_create_deposition
   - git fetch origin "$MR_TARGET_BRANCH"
-  - git archive --format zip "origin/$MR_TARGET_BRANCH" > $HERMES_ARCHIVE
-
+  - git archive --format zip "origin/$MR_TARGET_BRANCH" {%deposit_zip_files%} > $HERMES_ARCHIVE
 
 # Basic building blocks of hermes jobs
 # - Set up git with a valid author and configure URL to allow pushes.
@@ -42,14 +21,18 @@
 
 # - Commit changes and create a matching merge request.
 .hermes_create_merge_request: &hermes_create_merge_request
-  - git commit -m "$MR_COMMIT_MESSAGE"
-  - >-
-    git push origin "$MR_SOURCE_BRANCH"
-    -o merge_request.create
-    -o merge_request.target="$MR_TARGET_BRANCH"
-    -o merge_request.title="$MR_TITLE"
-    -o merge_request.description="$MR_DESCRIPTION"
-    -o merge_request.remove_source_branch
+  - |
+    if git diff --cached --quiet; then
+        echo "No staged changes. Skipping MR creation."
+    else
+        git commit -m "$MR_COMMIT_MESSAGE"
+        git push origin "$MR_SOURCE_BRANCH" \
+          -o merge_request.create \
+          -o merge_request.target="$MR_TARGET_BRANCH" \
+          -o merge_request.title="$MR_TITLE" \
+          -o merge_request.description="$MR_DESCRIPTION" \
+          -o merge_request.remove_source_branch
+    fi
 
 # - Delete all branches created by hermes for curation.
 .hermes_cleanup_branches: &hermes_cleanup_branches
@@ -74,7 +57,8 @@
         python -m venv .hermes-env
       fi
     - . .hermes-env/bin/activate
-    - pip install git+https://github.com/softwarepub/hermes.git
+    - {%pip_install_hermes%}
+{%pip_install_plugins_gitlab%}
   tags:
     - docker
   artifacts:
@@ -101,14 +85,15 @@
       when: never
     - if: $CI_COMMIT_TITLE =~ /^Merge branch 'hermes\/post-[0-9a-f]{8}' into/
       when: never
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "push" && {%gl_push_condition%}
+    - when: never
   script:
     # Run hermes pipeline
     - hermes harvest
     - hermes process
     - hermes curate
 
-    # Store BASE ref for post-processing
+    # Store branch & commit ref for post-processing
     - |
       if [ -z "$MR_POST_BRANCH" ]
       then
@@ -116,13 +101,14 @@
         then
           MR_POST_BRANCH=$CI_COMMIT_BRANCH
         else
-          MR_POST_BRANCH=$CI_DEFAULT_BRANCH
+          MR_POST_BRANCH=""
         fi
       fi
       echo $MR_POST_BRANCH > .hermes/curate/target_branch
+      echo $CI_COMMIT_REF_NAME > .hermes/curate/commit_ref
 
     # Create target branch for curation merge
-    - git branch "$MR_TARGET_BRANCH" "$MR_BASE_REF"
+    - {%gl_create_curate_branch|default('git branch "$MR_TARGET_BRANCH" "$MR_BASE_REF"', true)%}
     - git push origin "$MR_TARGET_BRANCH"
 
     # Create curation branch and merge request
@@ -136,7 +122,7 @@
   extends:
     - .hermes_job
   variables:
-    HERMES_ARCHIVE: $CI_PROJECT_NAME.zip
+    HERMES_ARCHIVE: {%deposit_zip_name%}
     MR_SOURCE_BRANCH: hermes/post-$CI_COMMIT_SHORT_SHA
     MR_COMMIT_MESSAGE: "[hermes] Add post-processing results"
     MR_TITLE: Review hermes post-processing results
@@ -152,9 +138,49 @@
     # Restore target branch
     - MR_TARGET_BRANCH="$(cat .hermes/curate/target_branch)"
 
-    # Invoke callback to create $HERMES_ARCHIVE_NAME and publish
+    # Get target branch from tag ref if empty
+    - |
+        # Test if empty and .hermes/curate/commit_ref exists
+        if [ -z "$MR_TARGET_BRANCH" ] && [ -s .hermes/curate/commit_ref ]; then
+            # Get default branch
+            DEFAULT_BRANCH="$CI_DEFAULT_BRANCH"
+
+            # Take tag ref from .hermes/curate/commit_ref
+            REF="$(tr -d '\r\n' < .hermes/curate/commit_ref)"
+            TAG="${REF#refs/tags/}"
+
+            # Get commit
+            git fetch --force --tags origin '+refs/heads/*:refs/remotes/origin/*' >/dev/null 2>&1 || true
+            TAG_COMMIT="$(git rev-parse "${TAG}^{commit}" 2>/dev/null)" || exit 0
+
+            # Check if the default or another branch contains the tag commit
+            if git merge-base --is-ancestor "$TAG_COMMIT" "origin/$DEFAULT_BRANCH"; then
+                MR_TARGET_BRANCH="$DEFAULT_BRANCH"
+            else
+                BRANCH_REF="$(
+                    git for-each-ref --contains "$TAG_COMMIT" --format='%(refname:short)' refs/remotes/origin \
+                    | grep -vE '^origin/(hermes/|HEAD$)' \
+                    | head -n1
+                )"
+                if [ -n "$BRANCH_REF" ]; then
+                    MR_TARGET_BRANCH="${BRANCH_REF#refs/heads/}"
+                fi
+            fi
+        fi
+
+    {%% if deposit_parameter_zip_file %%}
+    # Invoke callback to create {%deposit_zip_name%} and publish
     - *hermes_create_deposition
-    - hermes deposit --initial -O invenio_rdm.auth_token "$ZENODO_TOKEN" --file "$HERMES_ARCHIVE" --file README.md
+    {%% endif %%}
+    # Call deposit to publish
+    - hermes deposit {%deposit_initial%} {%deposit_parameter_token%} "${%deposit_token_name%}" {%deposit_parameter_zip_file%} {%deposit_extra_files%}
+
+    # Skip on missing target branch
+    - |
+        if [ -z "$MR_TARGET_BRANCH" ]; then
+            echo "MR_TARGET_BRANCH is empty. Skipping postprocess."
+            exit 0
+        fi
 
     # Prepare clean branch for post-processing and run it
     - *hermes_switch_branch
