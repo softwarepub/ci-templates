@@ -44,7 +44,7 @@
 # Base job template for hermes
 .hermes_job:
   stage: deploy
-  image: python:3.10
+  image: python:3.11
   cache:
     key: hermes
     paths:
